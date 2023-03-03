@@ -9,11 +9,8 @@ logger = logging.getLogger(__name__)
 class DependencyTrackParser(object):
     """
     A class that can be used to parse the JSON Finding Packaging Format (FPF) export from OWASP Dependency Track.
-
     See here for more info on this JSON format: https://docs.dependencytrack.org/integrations/file-formats/
-
     A typical Finding Packaging Format (FPF) export looks like the following:
-
     {
         "version": "1.0",
         "meta" : {
@@ -106,7 +103,6 @@ class DependencyTrackParser(object):
     def _convert_dependency_track_finding_to_dojo_finding(self, dependency_track_finding, test):
         """
         Converts a Dependency Track finding to a DefectDojo finding
-
         :param dependency_track_finding: A dictionary representing a single finding from a Dependency Track Finding Packaging Format (FPF) export
         :param test: The test that the DefectDojo finding should be associated to
         :return: A DefectDojo Finding model
@@ -204,10 +200,6 @@ class DependencyTrackParser(object):
             logger.warn("Detected severity of %s that could not be mapped for %s. Defaulting to Critical!", dependency_track_severity, title)
             vulnerability_severity = "Critical"
 
-        # Use the analysis state from Dependency Track to determine if the finding has already been marked as a false positive upstream
-        analysis = dependency_track_finding.get('analysis')
-        is_false_positive = True if analysis is not None and analysis.get('state') == 'FALSE_POSITIVE' else False
-
         # Build and return Finding model
         finding = Finding(
             title=title,
@@ -215,7 +207,6 @@ class DependencyTrackParser(object):
             cwe=cwe,
             description=vulnerability_description,
             severity=vulnerability_severity,
-            false_p=is_false_positive,
             component_name=component_name,
             component_version=component_version,
             file_path=file_path,
@@ -224,7 +215,26 @@ class DependencyTrackParser(object):
             dynamic_finding=False)
 
         if vulnerability_id:
-            finding.unsaved_vulnerability_ids = vulnerability_id
+            finding.unsaved_vulnerability_ids = [vuln_id]
+
+        # Use the analysis state from Dependency Track to determine if the finding has already been marked as a false positive upstream
+        if 'state' in dependency_track_finding['analysis']:
+            if dependency_track_finding['analysis']['state'] == 'FALSE_POSITIVE':
+                finding.false_p = True
+                finding.active = False
+                finding.is_mitigated = True
+                finding.out_of_scope = False
+                finding.verified = False
+            if dependency_track_finding['analysis']['state'] == 'RESOLVED':
+                finding.is_mitigated = True
+                finding.active = False
+                finding.false_p = False
+                finding.out_of_scope = False
+            if dependency_track_finding['analysis']['state'] == 'NOT_AFFECTED':
+                finding.out_of_scope = True
+                finding.is_mitigated = False
+                finding.active=False
+                finding.false_p = False
 
         return finding
 
